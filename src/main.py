@@ -130,7 +130,19 @@ def main():
             learning_manager
         )
         
-        # Paso 6: Registro histórico
+        # Paso 6: Detección de problemas persistentes y sugerencias de actualización
+        logger.info("Analizando problemas persistentes del sistema...")
+        persistent_issues = learning_manager.detect_persistent_issues(extraction_result, image_quality)
+        
+        if persistent_issues.get("code_update_suggested", False):
+            logger.warning("RECOMENDACIÓN DEL SISTEMA: Actualización de código sugerida")
+            logger.warning(persistent_issues.get("recommendation", ""))
+            
+            # Añadir información al resultado de extracción
+            extraction_result["system_status_hint"] = persistent_issues.get("recommendation", "")
+            extraction_result["persistent_issues_detected"] = persistent_issues.get("issues_detected", [])
+
+        # Paso 7: Registro histórico
         logger.info("Guardando registro histórico...")
         learning_manager.save_processing_record(extraction_result, image_path)
         

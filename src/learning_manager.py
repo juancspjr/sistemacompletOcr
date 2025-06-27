@@ -253,3 +253,83 @@ class LearningManager:
             
         except Exception as e:
             logger.error(f"Error actualizando ajuste de confianza: {e}")
+
+    def detect_persistent_issues(self, extraction_result: Dict, image_quality: Dict) -> Dict:
+        """
+        NUEVA FUNCIÓN: Detecta problemas persistentes que requieren actualización de código
+        Parte del sistema de auto-mejora continua
+        """
+        try:
+            persistent_issues = {
+                "code_update_suggested": False,
+                "issues_detected": [],
+                "severity": "none",
+                "recommendation": ""
+            }
+            
+            # Criterio 1: Baja confianza persistente en múltiples campos
+            overall_confidence = extraction_result.get('overall_confidence', 100)
+            if overall_confidence < 50:
+                campos_extraidos = extraction_result.get('campos_extraidos', {})
+                low_confidence_fields = [
+                    field for field, data in campos_extraidos.items() 
+                    if isinstance(data, dict) and data.get('confidence', 100) < 40
+                ]
+                
+                if len(low_confidence_fields) >= 3:
+                    persistent_issues["issues_detected"].append("multiple_low_confidence_fields")
+                    persistent_issues["severity"] = "high"
+            
+            # Criterio 2: Problemas de calidad de imagen no resueltos por preprocesamiento
+            sharpness = image_quality.get('sharpness', 1000)
+            noise_level = image_quality.get('noise_level', 0)
+            
+            if sharpness < config.LAPLACIAN_VAR_MEDIUM and noise_level > config.NOISE_THRESHOLD_HIGH:
+                persistent_issues["issues_detected"].append("preprocessing_insufficient")
+                persistent_issues["severity"] = "medium" if persistent_issues["severity"] == "none" else persistent_issues["severity"]
+            
+            # Criterio 3: Errores de validación cruzada frecuentes
+            validation_results = extraction_result.get('validation_results', {})
+            if not validation_results.get('cross_validation_passed', True):
+                persistent_issues["issues_detected"].append("validation_failures")
+                persistent_issues["severity"] = "medium" if persistent_issues["severity"] == "none" else persistent_issues["severity"]
+            
+            # Criterio 4: Verificar historial de feedback para patrones problemáticos
+            try:
+                if config.MANUAL_FEEDBACK_CSV_FILE.exists():
+                    import pandas as pd
+                    df = pd.read_csv(config.MANUAL_FEEDBACK_CSV_FILE, encoding='utf-8')
+                    
+                    if len(df) > 10:  # Solo si hay suficiente historial
+                        # Contar errores recientes (últimos 7 días)
+                        df['timestamp_feedback'] = pd.to_datetime(df['timestamp_feedback'])
+                        recent_errors = df[df['timestamp_feedback'] > (pd.Timestamp.now() - pd.Timedelta(days=7))]
+                        
+                        if len(recent_errors) > 5:
+                            persistent_issues["issues_detected"].append("frequent_recent_corrections")
+                            persistent_issues["severity"] = "high"
+                            
+            except Exception as e:
+                logger.debug(f"Error verificando historial de feedback: {e}")
+            
+            # Determinar si se sugiere actualización de código
+            if persistent_issues["severity"] in ["high", "medium"] and len(persistent_issues["issues_detected"]) >= 2:
+                persistent_issues["code_update_suggested"] = True
+                persistent_issues["recommendation"] = (
+                    "Problemas persistentes de calidad de OCR/extracción detectados. "
+                    "Considere actualizar el código base del sistema desde el repositorio de GitHub. "
+                    "Consulte la 'Guía para la Actualización del Sistema en el Servidor' para más detalles."
+                )
+                
+                logger.warning("Sistema sugiere actualización de código debido a problemas persistentes")
+                logger.warning(f"Problemas detectados: {persistent_issues['issues_detected']}")
+            
+            return persistent_issues
+            
+        except Exception as e:
+            logger.error(f"Error detectando problemas persistentes: {e}")
+            return {
+                "code_update_suggested": False,
+                "issues_detected": ["detection_error"],
+                "error": str(e)
+            }
