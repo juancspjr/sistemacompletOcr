@@ -1,0 +1,155 @@
+# Plantilla para recibos de Pago Móvil - Versión 1.0.2
+# Esta plantilla define las regiones de interés y metadatos para la extracción automática
+
+nombre_plantilla: "APPPAGO-V-0102-v1"
+version: "1.0.2"
+descripcion: "Plantilla para recibos de Pago Móvil estándar de aplicaciones bancarias venezolanas"
+fecha_creacion: "2025-01-27"
+
+# Huella textual clave para identificación de plantilla
+huella_texto_clave:
+  - "Pago Móvil"
+  - "Transferencia"
+  - "Monto"
+  - "Referencia"
+  - "Bs"
+  - "C.I."
+  - "Banco"
+
+# Esqueleto estructural para identificación geométrica
+esqueleto_estructural:
+  descripcion: "Distribución típica de bloques de texto en recibos de pago móvil"
+  regiones_esperadas:
+    - nombre: "header_region"
+      left_rel: 0.1    # 10% desde la izquierda
+      top_rel: 0.05    # 5% desde arriba
+      width_rel: 0.8   # 80% del ancho
+      height_rel: 0.15 # 15% de la altura
+      descripcion: "Región del encabezado con título y banco"
+    
+    - nombre: "amount_region"
+      left_rel: 0.1
+      top_rel: 0.25
+      width_rel: 0.8
+      height_rel: 0.2
+      descripcion: "Región del monto principal"
+    
+    - nombre: "details_region"
+      left_rel: 0.1
+      top_rel: 0.5
+      width_rel: 0.8
+      height_rel: 0.35
+      descripcion: "Región de detalles (referencia, cédulas, fecha)"
+
+# Definición de campos y sus regiones de interés
+campos:
+  monto:
+    descripcion: "Monto de la transferencia en bolívares"
+    left: 150        # Coordenadas relativas que se ajustarán dinámicamente
+    top: 200
+    width: 200
+    height: 40
+    psm_mode: "7"    # Línea de texto única
+    regex_validacion: 
+      - "\\d{1,3}(?:\\.\\d{3})*,\\d{2}"  # Formato venezolano
+      - "\\d+[,\\.]\\d{2}"               # Formato simple
+    palabras_clave_cercanas: ["Monto", "Bs", "Total", "Cantidad"]
+    orientacion_ajuste_dinamico: "derecha"  # Buscar a la derecha de palabras clave
+    
+  referencia:
+    descripcion: "Número de referencia de la operación"
+    left: 150
+    top: 300
+    width: 250
+    height: 35
+    psm_mode: "7"
+    regex_validacion:
+      - "\\d{8,15}"                      # 8-15 dígitos
+      - "[A-Z0-9]{8,20}"                 # Alfanumérico
+    palabras_clave_cercanas: ["Referencia", "Ref", "Número", "Operación"]
+    orientacion_ajuste_dinamico: "derecha"
+    
+  fecha:
+    descripcion: "Fecha y hora de la operación"
+    left: 150
+    top: 400
+    width: 180
+    height: 35
+    psm_mode: "7"
+    regex_validacion:
+      - "\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}"  # DD/MM/YYYY
+      - "\\d{4}-\\d{2}-\\d{2}"               # YYYY-MM-DD
+    palabras_clave_cercanas: ["Fecha", "Hora", "Timestamp"]
+    orientacion_ajuste_dinamico: "derecha"
+    
+  cedula_origen:
+    descripcion: "Cédula del emisor"
+    left: 150
+    top: 500
+    width: 120
+    height: 30
+    psm_mode: "7"
+    regex_validacion:
+      - "[VE]-?\\d{7,9}"                 # V-12345678
+      - "\\d{7,9}"                       # Solo números
+    palabras_clave_cercanas: ["C.I.", "Cédula", "Origen", "Emisor"]
+    orientacion_ajuste_dinamico: "derecha"
+    
+  cedula_destino:
+    descripcion: "Cédula del beneficiario"
+    left: 150
+    top: 550
+    width: 120
+    height: 30
+    psm_mode: "7"
+    regex_validacion:
+      - "[VE]-?\\d{7,9}"
+      - "\\d{7,9}"
+    palabras_clave_cercanas: ["Destino", "Beneficiario", "Receptor"]
+    orientacion_ajuste_dinamico: "derecha"
+    
+  banco_origen:
+    descripcion: "Banco emisor"
+    left: 50
+    top: 600
+    width: 200
+    height: 30
+    psm_mode: "6"    # Bloque de texto uniforme
+    regex_validacion:
+      - "[A-Za-z\\s]+"                   # Solo letras y espacios
+    palabras_clave_cercanas: ["Banco", "Origen", "Desde"]
+    orientacion_ajuste_dinamico: "abajo"
+    
+  banco_destino:
+    descripcion: "Banco receptor"
+    left: 300
+    top: 600
+    width: 200
+    height: 30
+    psm_mode: "6"
+    regex_validacion:
+      - "[A-Za-z\\s]+"
+    palabras_clave_cercanas: ["Banco", "Destino", "Hacia"]
+    orientacion_ajuste_dinamico: "abajo"
+
+# Configuración de ajustes dinámicos
+ajustes_dinamicos:
+  margen_busqueda: 50      # Píxeles de margen para búsqueda de palabras clave
+  factor_escala: 1.2       # Factor de escala para ROI si no se encuentra contenido
+  umbral_confianza_minima: 30  # Confianza mínima para considerar una detección válida
+
+# Metadatos adicionales
+metadatos:
+  aplicaciones_compatibles:
+    - "Banco de Venezuela"
+    - "Banesco"
+    - "Mercantil"
+    - "BBVA Provincial"
+  tipos_operacion:
+    - "Pago Móvil"
+    - "Transferencia Bancaria"
+  resolucion_optima:
+    min_width: 400
+    min_height: 600
+    max_width: 1200
+    max_height: 1800
