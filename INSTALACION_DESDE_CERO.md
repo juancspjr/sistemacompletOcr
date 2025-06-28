@@ -341,7 +341,7 @@ Si sigues teniendo problemas:
 **¡El sistema debería funcionar perfectamente siguiendo esta guía!**
 \`\`\`
 
-```shellscript file="scripts/install_clean.sh"
+\`\`\`shellscript file="scripts/install_clean.sh"
 #!/bin/bash
 
 # Script de Instalación Limpia OCR v2.0.0

@@ -155,7 +155,7 @@ Basado en lógica exitosa probada.
 
 ## Uso Rápido
 
-```bash
+\`\`\`bash
 # 1. Activar entorno
 source venv/bin/activate
 
