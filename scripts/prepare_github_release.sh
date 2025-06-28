@@ -77,7 +77,7 @@ cat > "$CHANGELOG_FILE" << 'EOF'
 
 ### 📋 Instrucciones de Actualización
 
-```bash
+\`\`\`bash
 # Desde el servidor
 cd /opt/ocr-pagos
 wget https://raw.githubusercontent.com/tu-usuario/sistema-ocr-pagos/v2.0.0/scripts/deploy_v2.sh
