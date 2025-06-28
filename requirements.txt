@@ -1,22 +1,23 @@
-# Dependencias principales para el sistema OCR de pagos móviles
-# Versiones estables recomendadas para producción
+    # Dependencias principales para el sistema OCR de pagos móviles
+    # Versiones estables recomendadas para producción
 
-# OCR y procesamiento de imágenes
-pytesseract==0.3.10
-opencv-python==4.8.1.78
-Pillow==10.0.1
-numpy==1.24.3
+    # OCR y procesamiento de imágenes
+    pytesseract==0.3.10
+    opencv-python==4.8.1.78
+    Pillow==10.0.1
+    numpy==1.24.3
 
-# Manipulación de datos
-pandas==2.0.3
-PyYAML==6.0.1
+    # Manipulación de datos
+    pandas==2.0.3
+    PyYAML==6.0.1
 
-# Utilidades del sistema
-pathlib2==2.3.7
-python-dateutil==2.8.2
+    # Utilidades del sistema
+    pathlib2==2.3.7
+    python-dateutil==2.8.2
 
-# Logging y configuración
-colorlog==6.7.0
-
-# Procesamiento de texto y expresiones regulares (incluido en Python estándar)
-# re, json, datetime, logging, shutil, sys, os - módulos estándar de Python
+    # Logging y configuración
+    colorlog==6.7.0
+    packaging>=21.3
+    pytz>=2020.1
+    tzdata>=2022.1
+    six # Asegura la compatibilidad con pathlib2
