@@ -10,25 +10,61 @@ import logging
 from pathlib import Path
 from datetime import datetime
 import shutil
+import traceback
 
 # Importar módulos v2.0
-import config
-from document_classifier import is_payment_receipt
-from image_processor_optimized import diagnose_and_process_image
-from ocr_engine import perform_general_ocr
-from template_manager_v2 import identify_template_or_zoi_v2
-from data_extractor_v2 import extract_data_v2
-from learning_manager import LearningManager
+try:
+    import config
+    from document_classifier import is_payment_receipt
+    from image_processor_optimized import diagnose_and_process_image
+    from ocr_engine import perform_general_ocr
+    from template_manager_v2 import identify_template_or_zoi_v2
+    from data_extractor_v2 import extract_data_v2
+    from learning_manager import LearningManager
+except ImportError as e:
+    print(f"Error importando módulos: {e}")
+    print("Asegúrate de que todos los archivos estén en el directorio src/")
+    sys.exit(1)
 
 # Configurar logging
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(config.LOG_FILE),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+def setup_logging():
+    """Configura el sistema de logging"""
+    try:
+        # Crear directorio de logs si no existe
+        config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Configurar formato de logging
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        
+        # Configurar handlers
+        handlers = []
+        
+        # Handler para archivo
+        file_handler = logging.FileHandler(config.LOG_FILE_PATH, encoding='utf-8')
+        file_handler.setFormatter(logging.Formatter(log_format))
+        handlers.append(file_handler)
+        
+        # Handler para consola
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(logging.Formatter(log_format))
+        handlers.append(console_handler)
+        
+        # Configurar logging básico
+        logging.basicConfig(
+            level=getattr(logging, config.LOG_LEVEL),
+            format=log_format,
+            handlers=handlers,
+            force=True
+        )
+        
+        return True
+    except Exception as e:
+        print(f"Error configurando logging: {e}")
+        return False
+
+# Inicializar logging
+if not setup_logging():
+    print("Continuando sin logging configurado...")
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +92,8 @@ def save_processing_results_v2(results: dict, temp_dir: Path):
         
         # Guardar resumen ejecutivo
         summary = {
-            'version': 'v2.0_optimized',
+            'version': config.VERSION,
+            'version_name': config.VERSION_NAME,
             'timestamp': results.get('timestamp'),
             'status': results.get('status', 'unknown'),
             'extraction_method': results.get('extraction_method'),
@@ -117,6 +154,7 @@ def process_image_v2(image_path: Path, output_dir: Path = None) -> dict:
     """
     logger.info("="*80)
     logger.info(f"INICIANDO PROCESAMIENTO OCR v2.0 OPTIMIZADO")
+    logger.info(f"Versión: {config.VERSION} - {config.VERSION_NAME}")
     logger.info(f"Imagen: {image_path}")
     logger.info("="*80)
     
@@ -130,7 +168,8 @@ def process_image_v2(image_path: Path, output_dir: Path = None) -> dict:
     
     # Inicializar resultado
     processing_result = {
-        'version': 'v2.0_optimized_flexible_extraction',
+        'version': config.VERSION,
+        'version_name': config.VERSION_NAME,
         'image_path': str(image_path),
         'timestamp': start_time.isoformat(),
         'status': 'processing',
@@ -247,11 +286,13 @@ def process_image_v2(image_path: Path, output_dir: Path = None) -> dict:
         return processing_result
         
     except Exception as e:
-        logger.error(f"Error durante procesamiento v2.0: {e}", exc_info=True)
+        logger.error(f"Error durante procesamiento v2.0: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         
         processing_result.update({
             'status': 'error',
             'error': str(e),
+            'traceback': traceback.format_exc(),
             'end_timestamp': datetime.now().isoformat()
         })
         
@@ -263,21 +304,67 @@ def process_image_v2(image_path: Path, output_dir: Path = None) -> dict:
         
         return processing_result
 
+def show_help():
+    """Muestra ayuda del sistema"""
+    print(f"""
+Sistema OCR v{config.VERSION} - {config.VERSION_NAME}
+
+USO:
+    python3 main_v2.py <ruta_imagen>
+    python3 main_v2.py --help
+
+EJEMPLOS:
+    python3 main_v2.py input/comprobante.png
+    python3 main_v2.py /ruta/completa/imagen.jpg
+
+FORMATOS SOPORTADOS:
+    .png, .jpg, .jpeg, .tiff, .bmp
+
+DIRECTORIOS:
+    input/     - Coloca aquí las imágenes a procesar
+    temp/      - Resultados temporales con timestamp
+    logs/      - Logs del sistema
+    output/    - Resultados finales (opcional)
+
+ARCHIVOS DE RESULTADO:
+    temp/<imagen>_<timestamp>/extraction_result_v2.json    - Resultado completo
+    temp/<imagen>_<timestamp>/extraction_summary_v2.json   - Resumen ejecutivo
+
+CONFIGURACIÓN:
+    src/config.py - Configuración del sistema
+    
+VARIABLES DE ENTORNO:
+    OCR_DEBUG=1 - Activar modo debug con imágenes de diagnóstico
+""")
+
 def main():
     """Función principal del sistema OCR v2.0"""
+    
+    # Verificar argumentos
     if len(sys.argv) != 2:
-        print("Uso: python main_v2.py <ruta_imagen>")
-        print("Ejemplo: python main_v2.py input/test2.png")
-        sys.exit(1)
+        if len(sys.argv) > 1 and sys.argv[1] in ['--help', '-h', 'help']:
+            show_help()
+            sys.exit(0)
+        else:
+            print(f"Sistema OCR v{config.VERSION} - {config.VERSION_NAME}")
+            print("Uso: python main_v2.py <ruta_imagen>")
+            print("Ayuda: python main_v2.py --help")
+            sys.exit(1)
     
     image_path = Path(sys.argv[1])
     
+    # Verificar que la imagen existe
     if not image_path.exists():
         logger.error(f"La imagen no existe: {image_path}")
+        print(f"ERROR: La imagen no existe: {image_path}")
         sys.exit(1)
     
-    if not image_path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.tiff', '.bmp']:
+    # Verificar formato de imagen
+    supported_formats = ['.png', '.jpg', '.jpeg', '.tiff', '.bmp']
+    if image_path.suffix.lower() not in supported_formats:
         logger.error(f"Formato de imagen no soportado: {image_path.suffix}")
+        print(f"ERROR: Formato no soportado: {image_path.suffix}")
+        print(f"Formatos soportados: {', '.join(supported_formats)}")
         sys.exit(1)
     
     try:
@@ -286,7 +373,7 @@ def main():
         
         # Mostrar resumen en consola
         print("\n" + "="*60)
-        print("RESUMEN DE PROCESAMIENTO OCR v2.0")
+        print(f"RESUMEN DE PROCESAMIENTO OCR v{config.VERSION}")
         print("="*60)
         print(f"Estado: {result.get('final_status', 'unknown')}")
         print(f"Método de extracción: {result.get('extraction_method', 'unknown')}")
@@ -305,6 +392,14 @@ def main():
                     confidence = field_data.get('confidence', 0)
                     print(f"{field_name:15}: {value:20} ({confidence:.1f}%)")
         
+        # Mostrar ubicación de resultados
+        temp_dirs = list(config.TEMP_DIR.glob(f"{image_path.stem}_*"))
+        if temp_dirs:
+            latest_temp = max(temp_dirs, key=lambda x: x.stat().st_mtime)
+            print(f"\nRESULTADOS GUARDADOS EN:")
+            print(f"  {latest_temp}/extraction_result_v2.json")
+            print(f"  {latest_temp}/extraction_summary_v2.json")
+        
         print("="*60)
         
         # Código de salida basado en el resultado
@@ -317,9 +412,12 @@ def main():
             
     except KeyboardInterrupt:
         logger.info("Procesamiento interrumpido por el usuario")
+        print("\nProcesamiento interrumpido por el usuario")
         sys.exit(130)
     except Exception as e:
         logger.error(f"Error fatal en main v2.0: {e}", exc_info=True)
+        print(f"ERROR FATAL: {e}")
+        print("Ver logs/system.log para más detalles")
         sys.exit(1)
 
 if __name__ == "__main__":
