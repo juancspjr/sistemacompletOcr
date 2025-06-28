@@ -1,172 +1,201 @@
-#!/usr/bin/env python3
 """
-Orquestador Inteligente - Script principal del sistema OCR de pagos móviles
-Coordina todo el flujo de procesamiento desde la recepción hasta la salida de datos
+Sistema OCR v3.0 - Script Principal
+Basado en la lógica exitosa con inversión inteligente de colores
 """
 
+import os
 import sys
 import json
 import logging
 from pathlib import Path
 from datetime import datetime
-import shutil
-
-# Importar módulos del proyecto
 import config
-from document_classifier import is_payment_receipt
-from image_processor import diagnose_and_process_image
-from ocr_engine import perform_general_ocr
-from template_manager import identify_template_or_zoi
-from data_extractor import extract_data
-from learning_manager import LearningManager
+from image_processor import process_image
+from field_extractor import extract_fields
 
-def setup_logging(image_id: str):
-    """Configura el sistema de logging"""
+def setup_logging():
+    """Configurar sistema de logging"""
     logging.basicConfig(
         level=getattr(logging, config.LOG_LEVEL),
-        format='%(asctime)s - %(levelname)s - %(message)s',
+        format=config.LOG_FORMAT,
         handlers=[
-            logging.FileHandler(config.LOG_FILE_PATH),
-            logging.StreamHandler()
+            logging.FileHandler(f"{config.LOGS_DIR}/ocr_system.log"),
+            logging.StreamHandler(sys.stdout)
         ]
     )
+
+def create_directories():
+    """Crear directorios necesarios"""
+    for directory in [config.INPUT_DIR, config.OUTPUT_DIR, config.TEMP_DIR, config.LOGS_DIR]:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+
+def process_receipt(image_path: str) -> Dict:
+    """
+    Procesa un comprobante de pago completo con inversión inteligente
+    """
     logger = logging.getLogger(__name__)
-    logger.info(f"Iniciando procesamiento para imagen: {image_id}")
-    return logger
-
-def create_temp_directory(image_id: str) -> Path:
-    """Crea directorio temporal para la imagen"""
-    temp_image_dir = config.TEMP_DIR / image_id
-    temp_image_dir.mkdir(parents=True, exist_ok=True)
-    return temp_image_dir
-
-def generate_output_json(success: bool, reason: str = "", data: dict = None, 
-                        image_quality: dict = None, processing_steps: dict = None) -> dict:
-    """Genera el JSON de salida estandarizado"""
-    output = {
-        "success": success,
-        "timestamp": datetime.now().isoformat(),
-        "reason": reason,
-        "data": data or {},
-        "initial_image_quality": image_quality or {},
-        "processing_steps_taken": processing_steps or {}
-    }
-    return output
-
-def cleanup_temp_files(temp_image_dir: Path, logger):
-    """Limpia archivos temporales si está configurado"""
-    if config.CLEAN_TEMP_FILES:
-        try:
-            shutil.rmtree(temp_image_dir)
-            logger.info(f"Archivos temporales eliminados: {temp_image_dir}")
-        except Exception as e:
-            logger.warning(f"Error al eliminar archivos temporales: {e}")
-
-def main():
-    """Función principal del orquestador"""
-    if len(sys.argv) != 3:
-        print(json.dumps({
-            "success": False,
-            "reason": "invalid_arguments",
-            "message": "Uso: python main.py <image_path> <image_id>"
-        }))
-        sys.exit(1)
     
-    image_path = Path(sys.argv[1])
-    image_id = sys.argv[2]
+    # Validar archivo
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Imagen no encontrada: {image_path}")
     
-    # Configurar logging
-    logger = setup_logging(image_id)
+    # Crear directorio de salida único
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    image_name = Path(image_path).stem
+    output_dir = f"{config.TEMP_DIR}/{image_name}_{timestamp}"
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    
+    logger.info(f"=== PROCESANDO COMPROBANTE CON INVERSIÓN INTELIGENTE ===")
+    logger.info(f"Imagen: {image_path}")
+    logger.info(f"Directorio de salida: {output_dir}")
     
     try:
-        # Validar que la imagen existe
-        if not image_path.exists():
-            output = generate_output_json(False, "image_not_found")
-            print(json.dumps(output))
-            return
+        # 1. Procesar imagen (incluye detección de fondo oscuro e inversión)
+        logger.info("PASO 1: Procesamiento de imagen con inversión inteligente")
+        processed_image, diagnosis, processing_steps = process_image(image_path, output_dir)
         
-        # Crear directorio temporal
-        temp_image_dir = create_temp_directory(image_id)
-        logger.info(f"Directorio temporal creado: {temp_image_dir}")
+        # Mostrar información de inversión
+        inversion_info = processing_steps.get("inversion_info", {})
+        if inversion_info.get("applied", False):
+            logger.info(f"🔄 INVERSIÓN APLICADA: {inversion_info['method']}")
+            logger.info(f"   Confianza: {inversion_info['confidence']:.2f}")
+            logger.info(f"   Brillo original: {inversion_info.get('original_brightness', 0):.1f}")
+            logger.info(f"   Brillo invertido: {inversion_info.get('inverted_brightness', 0):.1f}")
+        else:
+            logger.info("ℹ️  No se requirió inversión de colores")
         
-        # Paso 1: Detección rápida de "No Recibo"
-        logger.info("Iniciando clasificación de documento...")
-        is_receipt, classification_data = is_payment_receipt(image_path)
+        # 2. Extraer campos
+        logger.info("PASO 2: Extracción de campos con lógica de centro y expansión")
+        extracted_fields = extract_fields(processed_image, output_dir)
         
-        if not is_receipt:
-            logger.info("Imagen clasificada como 'no recibo'")
-            output = generate_output_json(
-                False, 
-                "no_payment_receipt",
-                data={"classification_details": classification_data}
-            )
-            print(json.dumps(output))
-            cleanup_temp_files(temp_image_dir, logger)
-            return
+        # 3. Calcular estadísticas
+        successful_extractions = len([f for f in extracted_fields.values() 
+                                    if f.get('extraction_successful', False)])
+        total_fields = len(extracted_fields)
+        extraction_rate = (successful_extractions / total_fields) * 100 if total_fields > 0 else 0
         
-        # Paso 2: Diagnóstico multimodal y preprocesamiento
-        logger.info("Iniciando diagnóstico y preprocesamiento de imagen...")
-        preprocessed_image, image_quality, processing_steps = diagnose_and_process_image(
-            image_path, temp_image_dir
-        )
+        # Calcular confianza general
+        confidences = [f.get('confidence', 0) for f in extracted_fields.values() 
+                      if f.get('extraction_successful', False)]
+        overall_confidence = sum(confidences) / len(confidences) if confidences else 0
         
-        # Paso 3: OCR general
-        logger.info("Realizando OCR general...")
-        ocr_data_full = perform_general_ocr(preprocessed_image)
+        # 4. Compilar resultado final
+        result = {
+            "success": successful_extractions > 0,
+            "version": "3.0",
+            "timestamp": datetime.now().isoformat(),
+            "image_path": image_path,
+            "output_directory": output_dir,
+            "image_diagnosis": diagnosis,
+            "processing_steps": processing_steps,
+            "extracted_fields": extracted_fields,
+            "statistics": {
+                "total_fields": total_fields,
+                "successful_extractions": successful_extractions,
+                "failed_extractions": total_fields - successful_extractions,
+                "extraction_rate": extraction_rate,
+                "overall_confidence": overall_confidence
+            },
+            "final_status": "extraction_successful" if successful_extractions > 0 else "extraction_failed"
+        }
         
-        # Paso 4: Identificación de plantilla o ZOI dinámicas
-        logger.info("Identificando plantilla o calculando ZOI dinámicas...")
-        image_dimensions = (preprocessed_image.shape[1], preprocessed_image.shape[0])
-        template_or_zoi_data = identify_template_or_zoi(ocr_data_full, image_dimensions)
+        # Guardar resultado
+        result_path = f"{output_dir}/{config.EXTRACTION_RESULT_FILE}"
+        with open(result_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
         
-        # Paso 5: Extracción dirigida y refinamiento
-        logger.info("Iniciando extracción dirigida de datos...")
-        learning_manager = LearningManager()
-        extraction_result = extract_data(
-            preprocessed_image, 
-            ocr_data_full, 
-            template_or_zoi_data, 
-            temp_image_dir, 
-            learning_manager
-        )
+        logger.info("=== PROCESAMIENTO COMPLETADO ===")
+        logger.info(f"Resultado guardado en: {result_path}")
         
-        # Paso 6: Detección de problemas persistentes y sugerencias de actualización
-        logger.info("Analizando problemas persistentes del sistema...")
-        persistent_issues = learning_manager.detect_persistent_issues(extraction_result, image_quality)
-        
-        if persistent_issues.get("code_update_suggested", False):
-            logger.warning("RECOMENDACIÓN DEL SISTEMA: Actualización de código sugerida")
-            logger.warning(persistent_issues.get("recommendation", ""))
-            
-            # Añadir información al resultado de extracción
-            extraction_result["system_status_hint"] = persistent_issues.get("recommendation", "")
-            extraction_result["persistent_issues_detected"] = persistent_issues.get("issues_detected", [])
-
-        # Paso 7: Registro histórico
-        logger.info("Guardando registro histórico...")
-        learning_manager.save_processing_record(extraction_result, image_path)
-        
-        # Generar salida final
-        output = generate_output_json(
-            True,
-            "processing_completed",
-            data=extraction_result,
-            image_quality=image_quality,
-            processing_steps=processing_steps
-        )
-        
-        print(json.dumps(output, ensure_ascii=False, indent=2))
-        logger.info("Procesamiento completado exitosamente")
+        return result
         
     except Exception as e:
-        logger.error(f"Error durante el procesamiento: {str(e)}", exc_info=True)
-        output = generate_output_json(False, "processing_error", data={"error": str(e)})
-        print(json.dumps(output))
+        logger.error(f"Error durante procesamiento: {e}", exc_info=True)
+        error_result = {
+            "success": False,
+            "version": "3.0",
+            "timestamp": datetime.now().isoformat(),
+            "image_path": image_path,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "final_status": "processing_error"
+        }
+        return error_result
+
+def print_summary(result: Dict):
+    """Imprime resumen de resultados con información de inversión"""
+    if result["success"]:
+        print("\n" + "="*70)
+        print("🎯 RESUMEN DE EXTRACCIÓN OCR v3.0 CON INVERSIÓN INTELIGENTE")
+        print("="*70)
+        print(f"Estado: ✅ EXITOSO")
+        
+        # Información de imagen
+        diagnosis = result.get("image_diagnosis", {})
+        processing_steps = result.get("processing_steps", {})
+        
+        print(f"Tipo de imagen: {diagnosis.get('image_type', 'Desconocido')}")
+        
+        # Información de inversión
+        inversion_info = processing_steps.get("inversion_info", {})
+        if inversion_info.get("applied", False):
+            print(f"🔄 Inversión aplicada: SÍ ({inversion_info.get('method', 'unknown')})")
+            print(f"   Confianza inversión: {inversion_info.get('confidence', 0):.2f}")
+        else:
+            print(f"🔄 Inversión aplicada: NO")
+        
+        # Estadísticas de extracción
+        stats = result.get("statistics", {})
+        print(f"Campos extraídos: {stats.get('successful_extractions', 0)}/{stats.get('total_fields', 0)}")
+        print(f"Tasa de extracción: {stats.get('extraction_rate', 0):.1f}%")
+        print(f"Confianza general: {stats.get('overall_confidence', 0):.1f}%")
+        print(f"Directorio de salida: {result['output_directory']}")
+        
+        print("\n📋 CAMPOS EXTRAÍDOS:")
+        print("-" * 50)
+        for field_name, field_data in result["extracted_fields"].items():
+            if field_data.get('extraction_successful', False):
+                value = field_data.get('value', '')
+                confidence = field_data.get('confidence', 0)
+                print(f"{field_name:15}: {value} ({confidence:.0f}%)")
+            else:
+                reason = field_data.get('reason', 'No extraído')
+                print(f"{field_name:15}: ❌ {reason}")
+        
+        print("="*70)
+    else:
+        print("\n" + "="*70)
+        print("❌ ERROR EN PROCESAMIENTO")
+        print("="*70)
+        print(f"Error: {result.get('error', 'Error desconocido')}")
+        print(f"Tipo: {result.get('error_type', 'Desconocido')}")
+        print("="*70)
+
+def main():
+    """Función principal"""
+    if len(sys.argv) != 2:
+        print("Uso: python3 src/main.py <ruta_imagen>")
+        print("Ejemplo: python3 src/main.py input/comprobante.png")
+        print("\n🆕 NUEVA FUNCIONALIDAD v3.0:")
+        print("   • Inversión inteligente de colores para fondos oscuros")
+        print("   • Detección automática de fondos negros")
+        print("   • Conversión automática: letras blancas → letras negras")
+        print("   • Optimizado para comprobantes de fondo oscuro")
+        sys.exit(1)
     
-    finally:
-        # Limpieza de archivos temporales
-        if 'temp_image_dir' in locals():
-            cleanup_temp_files(temp_image_dir, logger)
+    # Configurar sistema
+    create_directories()
+    setup_logging()
+    
+    # Procesar imagen
+    image_path = sys.argv[1]
+    result = process_receipt(image_path)
+    
+    # Mostrar resumen
+    print_summary(result)
+    
+    # Código de salida
+    sys.exit(0 if result["success"] else 1)
 
 if __name__ == "__main__":
     main()
